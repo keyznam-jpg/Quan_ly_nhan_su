@@ -29,9 +29,9 @@ SAVE_FOLDER_EXCEL = 'static/web/excel'
 
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = '9999' #sửa lại mật khẩu database nếu cần
+app.config['MYSQL_PASSWORD'] = '9999'  # Thay bằng mật khẩu MySQL thực tế của bạn
 app.config['MYSQL_DB'] = 'quan_ly_nhan_su'
-app.config['MYSQL_PORT'] = 3306 # sửa lại port database nếu cần
+app.config['MYSQL_PORT'] = 3306  # sửa lại port database nếu cần
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['UPLOAD_FOLDER_IMG'] = UPLOAD_FOLDER_IMG
 app.config['SAVE_FOLDER_PDF'] = SAVE_FOLDER_PDF
@@ -45,6 +45,21 @@ mysql = mysql.connector.connect(
     port=app.config['MYSQL_PORT']
 )
 mysql.connection = mysql
+
+def get_mysql_connection():
+    global mysql
+    try:
+        mysql.ping(reconnect=True, attempts=3, delay=5)
+    except mysql.connector.Error:
+        mysql = mysql.connector.connect(
+            host=app.config['MYSQL_HOST'],
+            user=app.config['MYSQL_USER'],
+            password=app.config['MYSQL_PASSWORD'],
+            database=app.config['MYSQL_DB'],
+            port=app.config['MYSQL_PORT']
+        )
+        mysql.connection = mysql
+    return mysql
 
 def login_required(func): # need for some router
     @functools.wraps(func)
@@ -69,7 +84,7 @@ def login():
     if 'username' in session.keys():
         return redirect(url_for("home"))
     try:
-        cur = mysql.connection.cursor()
+        cur = get_mysql_connection().connection.cursor()
         cur.execute("SELECT * FROM qlnv_congty")
         congty = cur.fetchall()[0]
         cur.close()
@@ -90,7 +105,7 @@ def login():
         password = hashlib.md5(details['current-password'].encode()).hexdigest()
         
         try:
-            cur = mysql.connection.cursor()
+            cur = get_mysql_connection().connection.cursor()
             cur.execute("""SELECT us.*, img.PathToImage
                     FROM qlnv_user us
                     JOIN qlnv_nhanvien nv ON us.MaNhanVien = nv.MaNhanVien
@@ -121,7 +136,7 @@ def login():
         my_user = user_data[0]
         
         try:
-            cur = mysql.connection.cursor()
+            cur = get_mysql_connection().connection.cursor()
             cur.execute("""
                 SELECT MaPhongBan
                 FROM qlnv_nhanvien
@@ -175,7 +190,7 @@ def login():
 @app.route("/home")
 def home():
     if 'username' in session.keys():
-        cur = mysql.connection.cursor()
+        cur = get_mysql_connection().connection.cursor()
         cur.execute("SELECT COUNT(*) FROM qlnv_nhanvien")
         num_nv = cur.fetchall()[0][0]
         
@@ -206,7 +221,7 @@ def table_data_employees():
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT nv.MaNhanVien, nv.TenNV, img.PathToImage, nv.DiaChi, DATE_FORMAT(nv.NgaySinh,"%d-%m-%Y"), nv.GioiTinh, nv.DienThoai, cv.TenCV
         FROM qlnv_nhanvien nv
@@ -226,7 +241,7 @@ def form_add_data_employees():
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""SELECT * FROM qlnv_chucvu""")
     chucvu = cur.fetchall()
     
@@ -330,7 +345,7 @@ def form_view_update_employees(maNV, canEdit):
     if (canEdit == "Y"):
         mode = "";
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT nv.MaNhanVien, nv.TenNV, nv.GioiTinh, nv.NgaySinh, nv.DanToc,
         nv.SoCMT, nv.NgayCMND, nv.NoiCMND, nv.DienThoai, nv.Email, nv.DiaChi,
@@ -514,7 +529,7 @@ def form_add_data_employees_upload_process(filename):
         abort(404)
     
     if request.method == 'POST':
-        cur = mysql.connection.cursor()
+        cur = get_mysql_connection().connection.cursor()
         details = request.form
         column_link = [details[col] for col in data_column]
         column_match = [default_name_Column.index(elm) for elm in column_link]
@@ -606,7 +621,7 @@ def get_data_employees_excel():
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT nv.MaNhanVien, nv.TenNV, cv.TenCV, pb.TenPB, CONCAT(td.TenTDHV,"-",td.ChuyenNganh) AS "TrinhDoHocVan", nv.Luong, nv.DiaChi, nv.NoiSinh,
         DATE_FORMAT(nv.NgaySinh,"%d-%m-%Y"), nv.GioiTinh, nv.DienThoai, nv.SoCMT, DATE_FORMAT(nv.NgayCMND,"%d-%m-%Y"), nv.NoiCMND,
@@ -630,7 +645,7 @@ def get_data_employees_excel():
 @login_required
 @app.route("/get_print_data_employees")
 def get_print_data_employees():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT nv.MaNhanVien, nv.TenNV, img.PathToImage, nv.DiaChi,DATE_FORMAT(nv.NgaySinh,"%d-%m-%Y"), nv.GioiTinh, nv.DienThoai, cv.TenCV
         FROM qlnv_nhanvien nv
@@ -654,7 +669,7 @@ def get_pdf_data_employees():
 @app.route("/get_information_one_employee/<string:maNV>")
 def get_infomation_one_employee(maNV):
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT nv.MaNhanVien, nv.TenNV, nv.GioiTinh, DATE_FORMAT(nv.NgaySinh,"%d-%m-%Y"), nv.DanToc,
         nv.SoCMT, nv.NgayCMND, nv.NoiCMND, nv.DienThoai, nv.Email, nv.DiaChi, 
@@ -711,7 +726,7 @@ def delete_nhan_vien(maNV):
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("SELECT ID_profile_image FROM qlnv_nhanvien WHERE MaNhanVien=%s", (maNV, ))
     id_image = cur.fetchall()[0][0]
     
@@ -741,7 +756,7 @@ def form_add_trinhdohocvan():
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""SELECT * FROM qlnv_trinhdohocvan""")
     trinhdohocvan = cur.fetchall()
     
@@ -773,7 +788,7 @@ def table_trinh_do_hoc_van():
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT hv.*, COUNT(nv.MaNhanVien)
                 FROM qlnv_trinhdohocvan hv
@@ -793,7 +808,7 @@ def form_view_update_trinh_do_hoc_van(mode, maTDHV):
     if session['role_id'] != 1:
         abort(404)
         
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT *
                 FROM qlnv_trinhdohocvan
@@ -850,7 +865,7 @@ def table_trinh_do_hoc_van_one(maTDHV):
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT *
                 FROM qlnv_trinhdohocvan
@@ -884,7 +899,7 @@ def delete_trinh_do_hoc_van(maTDHV):
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT COUNT(*)
                 FROM qlnv_trinhdohocvan hv
@@ -906,7 +921,7 @@ def delete_trinh_do_hoc_van(maTDHV):
 @app.route("/table_print_trinh_do_hoc_van")
 def table_print_trinh_do_hoc_van():
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT hv.*, COUNT(nv.MaNhanVien)
                 FROM qlnv_trinhdohocvan hv
@@ -924,7 +939,7 @@ def get_table_trinh_do_hoc_van_excel():
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT hv.*, COUNT(nv.MaNhanVien)
         FROM qlnv_trinhdohocvan hv
@@ -954,7 +969,7 @@ def get_table_trinh_do_hoc_van_pdf():
 @app.route("/table_print_trinh_do_hoc_van_nhan_vien/<string:maTDHV>")
 def table_print_trinh_do_hoc_van_nhan_vien(maTDHV):
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT *
                 FROM qlnv_trinhdohocvan
@@ -986,7 +1001,7 @@ def get_table_trinh_do_hoc_van_nhan_vien_excel(maTDHV):
     if session['role_id'] != 1:
         abort(404)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT *
                 FROM qlnv_trinhdohocvan
@@ -1036,7 +1051,7 @@ def get_table_trinh_do_hoc_van_nhan_vien_pdf(maTDHV):
 def table_chuc_vu():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT cv.MaCV, cv.TenCV, COUNT(NV.MaNhanVien) 
         FROM qlnv_chucvu cv
@@ -1056,7 +1071,7 @@ def table_chuc_vu():
 def form_view_update_chuc_vu(mode, maCV):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT *
         FROM qlnv_chucvu """)
@@ -1109,7 +1124,7 @@ def form_view_update_chuc_vu(mode, maCV):
 def form_add_chuc_vu():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""SELECT * FROM qlnv_chucvu""")
     chucvu = cur.fetchall()
     
@@ -1171,7 +1186,7 @@ def form_add_chuc_vu_upload_process(filename):
         abort(404)
     
     if request.method == 'POST':
-        cur = mysql.connection.cursor()
+        cur = get_mysql_connection().connection.cursor()
         details = request.form
         column_link = [details[col] for col in data_column]
         column_match = [default_name_Column.index(elm) for elm in column_link]
@@ -1226,7 +1241,7 @@ def form_add_chuc_vu_upload_process(filename):
 def table_chuc_vu_nhan_vien(maCV):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT TenCV
         FROM qlnv_chucvu 
@@ -1254,7 +1269,7 @@ def table_chuc_vu_nhan_vien(maCV):
 @login_required
 @app.route("/table_print_chuc_vu")
 def table_print_chuc_vu():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT cv.MaCV, cv.TenCV, COUNT(NV.MaNhanVien) 
         FROM qlnv_chucvu cv
@@ -1269,7 +1284,7 @@ def table_print_chuc_vu():
 @login_required
 @app.route("/table_print_chuc_vu_nhan_vien/<string:maCV>")
 def table_print_chuc_vu_nhan_vien(maCV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT TenCV
         FROM qlnv_chucvu 
@@ -1294,7 +1309,7 @@ def table_print_chuc_vu_nhan_vien(maCV):
 @login_required
 @app.route("/get_chuc_vu_table_excel")
 def get_chuc_vu_table_excel():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT cv.MaCV, cv.TenCV, COUNT(NV.MaNhanVien) 
         FROM qlnv_chucvu cv
@@ -1316,7 +1331,7 @@ def get_chuc_vu_table_excel():
 def get_nhan_vien_chuc_vu_table_excel(maCV):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT nv.MaNhanVien, nv.TenNV,DATE_FORMAT(nv.NgaySinh,"%d-%m-%Y"), nv.DienThoai, cv.TenCV, DATE_FORMAT(tg.NgayNhanChuc,"%d-%m-%Y")
         FROM qlnv_chucvu cv
@@ -1360,7 +1375,7 @@ def get_nhan_vien_chuc_vu_table_pdf(maCV):
 def delete_chuc_vu(maCV):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
         SELECT cv.MaCV, cv.TenCV, COUNT(nv.MaNhanVien) 
         FROM qlnv_chucvu cv
@@ -1389,7 +1404,7 @@ def delete_chuc_vu(maCV):
 @login_required
 @app.route("/danh_sach_cham_cong", methods=['GET','POST'])
 def danh_sach_cham_cong():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     mucPhanLoaiChamCong = [124,180]
     Nam = datetime.datetime.now().year
@@ -1436,7 +1451,7 @@ def danh_sach_cham_cong():
 @login_required
 @app.route('/get_print_danh_sach_cham_cong/<string:year>')
 def get_print_danh_sach_cham_cong(year):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     mucPhanLoaiChamCong = [10,20]
     Nam = year
@@ -1459,7 +1474,7 @@ def get_print_danh_sach_cham_cong(year):
 @login_required
 @app.route('/get_danh_sach_cham_cong_excel/<string:year>')
 def get_danh_sach_cham_cong_excel(year):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT * 
@@ -1491,7 +1506,7 @@ def get_danh_sach_cham_cong_pdf(year):
 @login_required
 @app.route("/table_cham_cong_tong_ket_thang/<string:maNV>_<string:year>")
 def table_cham_cong_tong_ket_thang(maNV,year):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     if session['role_id'] != 1:
         cur.execute("""
                     SELECT TenNV
@@ -1542,7 +1557,7 @@ def table_cham_cong_tong_ket_thang(maNV,year):
 @login_required
 @app.route("/get_print_cham_cong_tong_ket_thang/<string:maNV>_<string:year>")
 def get_print_cham_cong_tong_ket_thang(maNV,year):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT TenNV
                 FROM qlnv_nhanvien
@@ -1575,7 +1590,7 @@ def get_print_cham_cong_tong_ket_thang(maNV,year):
 @login_required
 @app.route("/get_cham_cong_tong_ket_thang_excel/<string:maNV>_<string:year>")
 def get_cham_cong_tong_ket_thang_excel(maNV, year):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT TenNV
                 FROM qlnv_nhanvien
@@ -1634,7 +1649,7 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
         """
         val = (year, month, session['username'][4])
         
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute(sql, val)
     chamcong = cur.fetchall()
@@ -1752,7 +1767,7 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
 @login_required
 @app.route("/graph_cham_cong_ngay/<string:maNV>_<string:year>_<string:month>")
 def graph_cham_cong_ngay(maNV,year,month):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT TenNV
@@ -1785,7 +1800,7 @@ def get_plot_cham_cong_tong_ket_thang(maNV,year,month):
     """
     val = (year, month, maNV)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT TenNV
@@ -1847,7 +1862,7 @@ def get_print_cham_cong_ngay_trong_thang(maNV,year,month):
     """
     val = (year, month, maNV)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT TenNV
@@ -1958,7 +1973,7 @@ def get_cham_cong_ngay_trong_thang_excel(maNV,year,month):
     """
     val = (year, month, maNV)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT TenNV
@@ -2017,7 +2032,7 @@ def form_view_update_cham_cong(canEdit, maNV, id, day, month, year):
     """
     val = (year, month, day, maNV)
     
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT TenNV
@@ -2279,7 +2294,7 @@ def delete_cham_cong(id):
         FROM qlnv_chamcong
         WHERE id = %s
     """
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute(sql, (id, ))
     old_chamcong = cur.fetchall()
@@ -2445,7 +2460,7 @@ def delete_cham_cong(id):
 @app.route('/form_add_data_cham_cong', methods=['GET','POST'])
 def form_add_data_cham_cong():
     if request.method == 'POST':
-        cur = mysql.connection.cursor()
+        cur = get_mysql_connection().connection.cursor()
         if (session['role_id'] == 1):
             detail = request.form
             NGAY = datetime.datetime.strptime(detail['Ngay'].strip(), '%Y-%m-%d')
@@ -2626,7 +2641,7 @@ def form_add_data_cham_cong():
 def view_all_phong_ban():
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""SELECT *
                 FROM qlnv_phongban
                 ORDER BY MaPB ASC""")
@@ -2661,7 +2676,7 @@ def view_all_phong_ban():
 def view_phong_ban(maPB):
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""SELECT *
                 FROM qlnv_phongban
                 WHERE MaPB = %s
@@ -2734,7 +2749,7 @@ def view_phong_ban(maPB):
 def form_update_phong_ban(maPB):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT * FROM qlnv_phongban
@@ -2800,7 +2815,7 @@ def form_update_phong_ban(maPB):
 def delete_phong_ban(maPB):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
 
     cur.execute("""
                 SELECT COUNT(*)
@@ -2823,7 +2838,7 @@ def delete_phong_ban(maPB):
 def form_add_data_phong_ban():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
 
     if request.method == 'POST':
         detail = request.form
@@ -2883,7 +2898,7 @@ def form_add_data_phong_ban():
 def form_add_thuong_phat_phong_ban(maPB):
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     dct_type = {
         'Thưởng':0,
@@ -2931,7 +2946,7 @@ def form_add_thuong_phat_phong_ban(maPB):
 def view_phat_phong_ban(maPB):
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""SELECT *
                 FROM qlnv_phongban
@@ -2989,7 +3004,7 @@ def view_phat_phong_ban(maPB):
 def view_thuong_phong_ban(maPB):
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""SELECT *
                 FROM qlnv_phongban
@@ -3047,7 +3062,7 @@ def view_thuong_phong_ban(maPB):
 def form_update_thuong_phat_phong_ban(maPB, id):
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     dct_type = {
         'Thưởng':0,
@@ -3094,7 +3109,7 @@ def form_update_thuong_phat_phong_ban(maPB, id):
 def delete_thuong_phat(maPB, id):
     if session['role_id'] == 3:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     cur.execute("""
                 SELECT * 
@@ -3124,7 +3139,7 @@ def delete_thuong_phat(maPB, id):
 def view_all_thoi_gian_cong_tac():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT nv.MaNhanVien, nv.TenNV, cv.TenCV, pb.TenPB, COUNT(tg.MaNV)
                 FROM qlnv_nhanvien nv
@@ -3144,7 +3159,7 @@ def view_all_thoi_gian_cong_tac():
 @login_required
 @app.route("/get_print_all_thoi_gian_cong_tac")
 def get_print_all_thoi_gian_cong_tac():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT nv.MaNhanVien, nv.TenNV, cv.TenCV, pb.TenPB, COUNT(tg.MaNV)
                 FROM qlnv_nhanvien nv
@@ -3173,7 +3188,7 @@ def get_all_thoi_gian_cong_tac_pdf():
 def get_all_thoi_gian_cong_tac_excel():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT nv.MaNhanVien, nv.TenNV, cv.TenCV, pb.TenPB, COUNT(tg.MaNV)
                 FROM qlnv_nhanvien nv
@@ -3195,7 +3210,7 @@ def get_all_thoi_gian_cong_tac_excel():
 @login_required
 @app.route("/view_thoi_gian_cong_tac/<string:maNV>")
 def view_thoi_gian_cong_tac(maNV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                  SELECT nv.TenNV
                  FROM qlnv_nhanvien nv
@@ -3231,7 +3246,7 @@ def view_thoi_gian_cong_tac(maNV):
 def delete_thoi_gian(id):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT *
                 FROM qlnv_thoigiancongtac
@@ -3253,7 +3268,7 @@ def delete_thoi_gian(id):
 @login_required
 @app.route("/get_print_thoi_gian_cong_tac/<string:maNV>")
 def get_print_thoi_gian_cong_tac(maNV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                  SELECT nv.TenNV
                  FROM qlnv_nhanvien nv
@@ -3285,7 +3300,7 @@ def get_print_thoi_gian_cong_tac(maNV):
 @login_required
 @app.route("/get_thoi_gian_cong_tac_excel/<string:maNV>")
 def get_thoi_gian_cong_tac_excel(maNV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                  SELECT nv.TenNV
                  FROM qlnv_nhanvien nv
@@ -3336,7 +3351,7 @@ def get_thoi_gian_cong_tac_pdf(maNV):
 def danh_sach_hop_dong():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT * 
                 FROM qlnv_hopdong
@@ -3351,7 +3366,7 @@ def danh_sach_hop_dong():
 @login_required
 @app.route('/get_print_danh_sach_hop_dong')
 def get_print_danh_sach_hop_dong():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT * 
                 FROM qlnv_hopdong
@@ -3367,7 +3382,7 @@ def form_add_hop_dong():
     if session['role_id'] != 1:
         abort(404)
     if request.method == 'POST':
-        cur = mysql.connection.cursor()
+        cur = get_mysql_connection().connection.cursor()
         details = request.form
         MaHD = details['MaHD']
         LoaiHopDong = details['LoaiHopDong']
@@ -3402,7 +3417,7 @@ def form_add_hop_dong():
 def get_danh_sach_hop_dong_excel():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT * 
                 FROM qlnv_hopdong
@@ -3430,7 +3445,7 @@ def get_danh_sach_hop_dong_pdf():
 def delete_hop_dong(id):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 DELETE FROM qlnv_hopdong
                 WHERE id = %s
@@ -3452,7 +3467,7 @@ def delete_hop_dong(id):
 def table_data_money():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
               SELECT l.id, nv.TenNV, nv.GioiTinh, cv.TenCV, l.Thang, l.Nam,
               l.LuongChamCong, l.SoTienPhat, l.SoTienThuong, l.TongSoTien, nv.MaNhanVien
@@ -3470,7 +3485,7 @@ def table_data_money():
 @login_required
 @app.route('/get_print_data_money')
 def get_print_data_money():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
               SELECT l.id, nv.TenNV, nv.GioiTinh, cv.TenCV, l.Thang, l.Nam,
               l.LuongChamCong, l.SoTienPhat, l.SoTienThuong, l.TongSoTien, nv.MaNhanVien
@@ -3497,7 +3512,7 @@ def get_data_money_pdf():
 def get_data_money_excel():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
               SELECT l.id, nv.TenNV, nv.GioiTinh, cv.TenCV, l.Thang, l.Nam,
               l.LuongChamCong, l.SoTienPhat, l.SoTienThuong, l.TongSoTien, nv.MaNhanVien
@@ -3517,7 +3532,7 @@ def get_data_money_excel():
 @login_required
 @app.route('/view_data_money/<string:maNV>')
 def view_data_money(maNV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     
     if session['role_id'] != 1:
         cur.execute("""
@@ -3574,7 +3589,7 @@ def view_data_money(maNV):
 @login_required
 @app.route('/get_print_view_data_money/<string:maNV>')
 def get_print_view_data_money(maNV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
               SELECT l.id,  l.Thang, l.Nam, tk.SoNgayDiLam, tk.SoNgayDiVang,
               tk.SoNgayTangCa, l.LuongCoDinh, l.LuongChamCong,
@@ -3607,7 +3622,7 @@ def get_print_view_data_money(maNV):
 @login_required
 @app.route('/get_data_money_one_excel/<string:maNV>')
 def get_data_money_one_excel(maNV):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
               SELECT l.id,  l.Thang, l.Nam, tk.SoNgayDiLam, tk.SoNgayDiVang, tk.SoNgayTangCa, l.LuongCoDinh, l.LuongChamCong,
               l.SoTienPhat, l.SoTienThuong, l.TongSoTien
@@ -3657,7 +3672,7 @@ def get_data_money_one_pdf(maNV):
 @login_required
 @app.route("/cai_dat")
 def cai_dat():
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT COUNT(*)
                 FROM qlnv_user
@@ -3674,7 +3689,7 @@ def cai_dat():
 def form_tao_tk():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT MaNhanVien
                 FROM qlnv_nhanvien
@@ -3777,7 +3792,7 @@ def form_tao_tk():
 def delete_account(id):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 DELETE FROM qlnv_phanquyenuser
                 WHERE id_user = %s
@@ -3795,7 +3810,7 @@ def delete_account(id):
 def form_view_tk():
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT us.Id_user, us.username, us.password, us.tennguoidung, r.role_name,
                 us.MaNhanVien, us.LastLogin, us.register
@@ -3822,7 +3837,7 @@ def form_view_tk():
 @login_required
 @app.route("/form_chinh_sua_mk/<string:id>", methods = ['GET','POST'])
 def form_chinh_sua_mk(id):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     if session['role_id'] != 1:
         cur.execute("""
                 SELECT username
@@ -3897,7 +3912,7 @@ def form_chinh_sua_mk(id):
 def form_view_cong_ty(canEdit):
     if session['role_id'] != 1:
         abort(404)
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""
                 SELECT * 
                 FROM qlnv_congty
@@ -3973,7 +3988,7 @@ def no_role_access(error):
                            error = error), 404
 
 def take_image_to_save(id_image, path_to_img):
-    cur = mysql.connection.cursor()
+    cur = get_mysql_connection().connection.cursor()
     cur.execute("""SELECT * FROM qlnv_imagedata""")
     img_data = cur.fetchall()
     change_path = False
