@@ -105,13 +105,13 @@
                   <td class="center"> {{date_weekday[i]}} <br> {{date_str[i]}} </td>
 
                   {% if data_day_tong_ket[i] >= 6 %}
-                  <td class="icon icon--sucess" title="Tổng thời gian làm việc trong ngày: {{data_day_tong_ket[i]}}"><i
+                  <td class="icon icon--sucess" title="Tổng thời gian làm việc trong ngày: {{data_day_tong_ket[i]}} - Trạng thái: {{ status_dict.get(day[i], 'unknown') }}"><i
                       class="fa fa-check-circle" aria-hidden="true"></i></td>
                   {% elif data_day_tong_ket[i] >= 4 and data_day_tong_ket[i] < 6 %} <td class="icon icon--warning"
-                    title="Tổng thời gian làm việc trong ngày: {{data_day_tong_ket[i]}}"><i class="fa fa-minus-circle"
+                    title="Tổng thời gian làm việc trong ngày: {{data_day_tong_ket[i]}} - Trạng thái: {{ status_dict.get(day[i], 'unknown') }}"><i class="fa fa-minus-circle"
                       aria-hidden="true"></i></td>
                     {% else %}
-                    <td class="icon icon--error" title="Tổng thời gian làm việc trong ngày: {{data_day_tong_ket[i]}}"><i
+                    <td class="icon icon--error" title="Tổng thời gian làm việc trong ngày: {{data_day_tong_ket[i]}} - Trạng thái: {{ status_dict.get(day[i], 'unknown') }}"><i
                         class="fa fa-times-circle" aria-hidden="true"></i></td>
                     {% endif %}
 

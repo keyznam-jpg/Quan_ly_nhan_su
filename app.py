@@ -1412,47 +1412,65 @@ def delete_chuc_vu(maCV):
 def danh_sach_cham_cong():
     cur = get_mysql_connection().connection.cursor()
     
-    mucPhanLoaiChamCong = [124,180]
-    Nam = datetime.datetime.now().year
-    
     if session['role_id'] != 1:
+        # User view: monthly summaries
+        mucPhanLoaiChamCong = [124,180]
+        Nam = datetime.datetime.now().year
+        
         cur.execute("""
                     SELECT * 
                     FROM qlnv_chamcongthang
                     WHERE Nam = %s AND MaNV = %s
                     """, (Nam, session['username'][4]))
-    else:
-        cur.execute("""
-                    SELECT * 
-                    FROM qlnv_chamcongthang
-                    WHERE Nam = %s
-                    """, (Nam, ))
-    chamcongtheocacthang = cur.fetchall()
-    
-    if request.method == 'POST':
-        detail = request.form
-        Nam = int(detail['Year'].strip())
-        if session['role_id'] != 1:
+        chamcongtheocacthang = cur.fetchall()
+        
+        if request.method == 'POST':
+            detail = request.form
+            Nam = int(detail['Year'].strip())
             cur.execute("""
                         SELECT * 
                         FROM qlnv_chamcongthang
                         WHERE Nam = %s AND MaNV = %s
                         """, (Nam, session['username'][4]))
-        else:
+            chamcongtheocacthang = cur.fetchall()
+        
+        cur.close()
+        return render_template(session['role'] +'chamcong/bang_cham_cong_thang.html',
+                               mucPhanLoaiChamCong = mucPhanLoaiChamCong,
+                               Nam = Nam,
+                               chamcongtheocacthang = chamcongtheocacthang,
+                               congty = session['congty'],
+                               my_user = session['username'])
+    else:
+        # Admin view: all attendances with status
+        Nam = datetime.datetime.now().year
+        cur.execute("""
+                    SELECT cc.*, nv.TenNV 
+                    FROM qlnv_chamcong cc 
+                    JOIN qlnv_nhanvien nv ON cc.MaNV = nv.MaNhanVien 
+                    WHERE YEAR(cc.Ngay) = %s 
+                    ORDER BY cc.Ngay DESC, cc.status ASC
+                    """, (Nam,))
+        attendances = cur.fetchall()
+        
+        if request.method == 'POST':
+            detail = request.form
+            Nam = int(detail['Year'].strip())
             cur.execute("""
-                        SELECT * 
-                        FROM qlnv_chamcongthang
-                        WHERE Nam = %s
-                        """, (Nam, ))
-        chamcongtheocacthang = cur.fetchall()
-    
-    cur.close()
-    return render_template(session['role'] +'chamcong/bang_cham_cong_thang.html',
-                           mucPhanLoaiChamCong = mucPhanLoaiChamCong,
-                           Nam = Nam,
-                           chamcongtheocacthang = chamcongtheocacthang,
-                           congty = session['congty'],
-                           my_user = session['username'])
+                        SELECT cc.*, nv.TenNV 
+                        FROM qlnv_chamcong cc 
+                        JOIN qlnv_nhanvien nv ON cc.MaNV = nv.MaNhanVien 
+                        WHERE YEAR(cc.Ngay) = %s 
+                        ORDER BY cc.Ngay DESC, cc.status ASC
+                        """, (Nam,))
+            attendances = cur.fetchall()
+        
+        cur.close()
+        return render_template('chamcong/danh_sach_cham_cong_admin.html',
+                               Nam = Nam,
+                               attendances = attendances,
+                               congty = session['congty'],
+                               my_user = session['username'])
 
 @login_required
 @app.route('/pending_attendances')
@@ -1471,26 +1489,68 @@ def approve_attendance(id):
     if session['role_id'] != 1:
         abort(403)
     cur = get_mysql_connection().connection.cursor()
-    # Get the attendance details before approving
-    cur.execute("SELECT MaNhanVien, Ngay, Thang, Nam, SoGioLam FROM qlnv_chamcong WHERE id = %s", (id,))
+    # Get current status and date
+    cur.execute("SELECT status, MaNV, Ngay FROM qlnv_chamcong WHERE id = %s", (id,))
     attendance = cur.fetchone()
     if attendance:
-        MaNhanVien, Ngay, Thang, Nam, SoGioLam = attendance
-        # Update status to approved
-        cur.execute("UPDATE qlnv_chamcong SET status = 'approved' WHERE id = %s", (id,))
-        # Update qlnv_chamcongthang
-        month_col = f"T{Thang}"
-        cur.execute(f"SELECT {month_col} FROM qlnv_chamcongthang WHERE MaNV = %s AND Nam = %s", (MaNhanVien, Nam))
-        current = cur.fetchone()
-        if current and current[0] is not None:
-            new_value = current[0] + SoGioLam
-            cur.execute(f"UPDATE qlnv_chamcongthang SET {month_col} = %s WHERE MaNV = %s AND Nam = %s", (new_value, MaNhanVien, Nam))
-        else:
-            # Insert or update
-            cur.execute(f"INSERT INTO qlnv_chamcongthang (MaNV, Nam, {month_col}) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE {month_col} = {month_col} + %s", (MaNhanVien, Nam, SoGioLam, SoGioLam))
+        current_status, MaNV, Ngay = attendance
+        if current_status != 'approved':
+            # Update status to approved
+            cur.execute("UPDATE qlnv_chamcong SET status = 'approved' WHERE id = %s", (id,))
+            # Add 1 day to qlnv_chamcongthang for that month/year
+            Thang = Ngay.month
+            Nam = Ngay.year
+            month_col = f"T{Thang}"
+            # Try to update existing row
+            cur.execute(f"UPDATE qlnv_chamcongthang SET {month_col} = {month_col} + 1 WHERE MaNV = %s AND Nam = %s", (MaNV, Nam))
+            if cur.rowcount == 0:
+                # no existing row, insert with 1
+                cur.execute(f"INSERT INTO qlnv_chamcongthang (MaNV, Nam, {month_col}) VALUES (%s, %s, 1)", (MaNV, Nam))
+            # Recalculate/insert/update the monthly summary in qlnv_chamcongtongketthang
+            # so triggers that compute salary will run and include this approved attendance.
+            # Note: qlnv_chamcongtongketthang uses column name MaNhanVien
+            cur.execute("SELECT * FROM qlnv_chamcongtongketthang WHERE Nam = %s AND Thang = %s AND MaNhanVien = %s", (Nam, Thang, MaNV))
+            tongket = cur.fetchall()
+            # compute counts based on approved attendances
+            day_to_count = calendar.SUNDAY
+            matrix = calendar.monthcalendar(Nam, Thang)
+            num_sun_days = sum(1 for x in matrix if x[day_to_count] != 0)
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT Ngay)
+                FROM qlnv_chamcong
+                WHERE MaNV = %s AND MONTH(Ngay)=%s AND YEAR(Ngay)=%s AND status = 'approved'
+                GROUP BY MONTH(Ngay)
+                """, (MaNV, Thang, Nam))
+            rows = cur.fetchall()
+            if len(rows) == 0:
+                soNgayDiLam = 0
+            else:
+                soNgayDiLam = rows[0][0]
+
+            soNgayDiVang = monthrange(Nam, Thang)[1] - soNgayDiLam - num_sun_days
+            cur.execute("""
+                SELECT COUNT(DISTINCT Ngay)
+                FROM qlnv_chamcong
+                WHERE MaNV = %s AND MONTH(Ngay)=%s AND YEAR(Ngay)=%s AND OT = 1 AND status = 'approved'
+                GROUP BY MONTH(Ngay)
+                """, (MaNV, Thang, Nam))
+            ot_rows = cur.fetchall()
+            if len(ot_rows) == 0:
+                soNgayTangCa = 0
+            else:
+                soNgayTangCa = ot_rows[0][0]
+
+            tongSoNgay = soNgayDiLam
+            if len(tongket) == 0:
+                # insert
+                cur.execute("INSERT INTO qlnv_chamcongtongketthang (Id, MaNhanVien, Nam, Thang, SoNgayDiLam, SoNgayDiVang, SoNgayTangCa, TongSoNgay) VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)", (MaNV, Nam, Thang, soNgayDiLam, soNgayDiVang, soNgayTangCa, tongSoNgay))
+            else:
+                # update existing
+                cur.execute("UPDATE qlnv_chamcongtongketthang SET SoNgayDiLam = %s, SoNgayDiVang = %s, SoNgayTangCa=%s, TongSoNgay = %s WHERE MaNhanVien = %s AND Nam = %s AND Thang = %s", (soNgayDiLam, soNgayDiVang, soNgayTangCa, tongSoNgay, MaNV, Nam, Thang))
     mysql.connection.commit()
     cur.close()
-    return redirect(url_for('pending_attendances'))
+    return redirect(url_for('danh_sach_cham_cong'))
 
 @login_required
 @app.route('/reject_attendance/<int:id>', methods=['POST'])
@@ -1498,20 +1558,60 @@ def reject_attendance(id):
     if session['role_id'] != 1:
         abort(403)
     cur = get_mysql_connection().connection.cursor()
-    # Check current status
-    cur.execute("SELECT status, MaNhanVien, Thang, Nam, SoGioLam FROM qlnv_chamcong WHERE id = %s", (id,))
+    # Check current status and date
+    cur.execute("SELECT status, MaNV, Ngay FROM qlnv_chamcong WHERE id = %s", (id,))
     attendance = cur.fetchone()
     if attendance:
-        status, MaNhanVien, Thang, Nam, SoGioLam = attendance
-        if status == 'approved':
-            # Subtract from qlnv_chamcongthang
-            month_col = f"T{Thang}"
-            cur.execute(f"UPDATE qlnv_chamcongthang SET {month_col} = {month_col} - %s WHERE MaNV = %s AND Nam = %s", (SoGioLam, MaNhanVien, Nam))
-        # Update status to rejected
-        cur.execute("UPDATE qlnv_chamcong SET status = 'rejected' WHERE id = %s", (id,))
+        current_status, MaNV, Ngay = attendance
+        if current_status != 'rejected':
+            # Update status to rejected
+            cur.execute("UPDATE qlnv_chamcong SET status = 'rejected' WHERE id = %s", (id,))
+            # If it was approved, subtract 1 from qlnv_chamcongthang
+            if current_status == 'approved':
+                Thang = Ngay.month
+                Nam = Ngay.year
+                month_col = f"T{Thang}"
+                cur.execute(f"UPDATE qlnv_chamcongthang SET {month_col} = {month_col} - 1 WHERE MaNV = %s AND Nam = %s", (MaNV, Nam))
+                # Recalculate monthly summary in qlnv_chamcongtongketthang so salary stats are updated
+                cur.execute("SELECT * FROM qlnv_chamcongtongketthang WHERE Nam = %s AND Thang = %s AND MaNhanVien = %s", (Nam, Thang, MaNV))
+                tongket = cur.fetchall()
+                day_to_count = calendar.SUNDAY
+                matrix = calendar.monthcalendar(Nam, Thang)
+                num_sun_days = sum(1 for x in matrix if x[day_to_count] != 0)
+
+                cur.execute("""
+                    SELECT COUNT(DISTINCT Ngay)
+                    FROM qlnv_chamcong
+                    WHERE MaNV = %s AND MONTH(Ngay)=%s AND YEAR(Ngay)=%s AND status = 'approved'
+                    GROUP BY MONTH(Ngay)
+                    """, (MaNV, Thang, Nam))
+                rows = cur.fetchall()
+                if len(rows) == 0:
+                    soNgayDiLam = 0
+                else:
+                    soNgayDiLam = rows[0][0]
+
+                soNgayDiVang = monthrange(Nam, Thang)[1] - soNgayDiLam - num_sun_days
+                cur.execute("""
+                    SELECT COUNT(DISTINCT Ngay)
+                    FROM qlnv_chamcong
+                    WHERE MaNV = %s AND MONTH(Ngay)=%s AND YEAR(Ngay)=%s AND OT = 1 AND status = 'approved'
+                    GROUP BY MONTH(Ngay)
+                    """, (MaNV, Thang, Nam))
+                ot_rows = cur.fetchall()
+                if len(ot_rows) == 0:
+                    soNgayTangCa = 0
+                else:
+                    soNgayTangCa = ot_rows[0][0]
+
+                tongSoNgay = soNgayDiLam
+                if len(tongket) == 0:
+                    cur.execute("INSERT INTO qlnv_chamcongtongketthang (Id, MaNhanVien, Nam, Thang, SoNgayDiLam, SoNgayDiVang, SoNgayTangCa, TongSoNgay) VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)", (MaNV, Nam, Thang, soNgayDiLam, soNgayDiVang, soNgayTangCa, tongSoNgay))
+                else:
+                    cur.execute("UPDATE qlnv_chamcongtongketthang SET SoNgayDiLam = %s, SoNgayDiVang = %s, SoNgayTangCa=%s, TongSoNgay = %s WHERE MaNhanVien = %s AND Nam = %s AND Thang = %s", (soNgayDiLam, soNgayDiVang, soNgayTangCa, tongSoNgay, MaNV, Nam, Thang))
     mysql.connection.commit()
     cur.close()
-    return redirect(url_for('pending_attendances'))
+    return redirect(url_for('danh_sach_cham_cong'))
 
 @login_required
 @app.route('/get_print_danh_sach_cham_cong/<string:year>')
@@ -1742,7 +1842,10 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
     
     tenNV = tenNV[0][0]
     
-    column_name = ['ID','MaNV','Ngay', 'GioVao','GioRa','OT','ThoiGianLamViec','ThoiGianFloat']
+    # qlnv_chamcong has 9 columns: id, MaNV, Ngay, GioVao, GioRa, OT,
+    # ThoiGianLamViec, ThoiGian_thap_phan, status
+    # Map ThoiGian_thap_phan -> 'ThoiGianFloat' for compatibility with existing code
+    column_name = ['ID','MaNV','Ngay', 'GioVao','GioRa','OT','ThoiGianLamViec','ThoiGianFloat','status']
     data = pd.DataFrame.from_records(chamcong, columns=column_name)
     
     # data = data.set_index('ID')
@@ -1812,6 +1915,13 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
         abort(404)
     data_tong_ket = data_tong_ket[0]
     data_day_tong_ket = [data_tong_ket[4 + i] for i in range(1,1+len(day))]
+    
+    # Get status for each day
+    cur.execute("SELECT DAY(Ngay), status FROM qlnv_chamcong WHERE MaNV = %s AND MONTH(Ngay) = %s AND YEAR(Ngay) = %s", (maNV, month, year))
+    status_rows = cur.fetchall()
+    status_map = {'pending': 'Chờ duyệt', 'approved': 'Đã duyệt', 'rejected': 'Từ chối'}
+    status_dict = {row[0]: status_map.get(row[1], 'Unknown') for row in status_rows}
+    
     cur.close()
 
     return render_template(session['role'] +'chamcong/bang_cham_cong_ngay.html',
@@ -1826,6 +1936,7 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
                            time_arr_str = time_arr_str,
                            id_arr = id_arr,
                            index_arr = index_arr,
+                           status_dict = status_dict,
                            congty = session['congty'],
                            my_user = session['username'])
 
