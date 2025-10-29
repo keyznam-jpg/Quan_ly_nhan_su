@@ -222,6 +222,11 @@ CREATE TRIGGER `insert_data_tongket_tinh_luong` BEFORE INSERT ON `qlnv_chamcongt
         SET sotienthuong = 0;
      END IF;
 
+    -- Thưởng chuyên cần nếu đi làm đủ 27 ngày
+    IF tongNgayCong >= 27 THEN
+        SET sotienthuong = sotienthuong + 500000;
+    END IF;
+
     SET luongDuocNhan = ROUND(luongchamcong - sotienphat + sotienthuong, -3);
 
     INSERT INTO `qlnv_luong` (`id`, `MaNV`, `Nam`, `Thang`, `LuongCoDinh`, `LuongChamCong`, `SoTienThuong`, `SoTienPhat`, `TongSoTien`)
@@ -305,10 +310,18 @@ CREATE TRIGGER `update_tongketthang_luong` AFTER UPDATE ON `qlnv_chamcongtongket
         SET sotienthuong = 0;
      END IF;
 
+    -- Thưởng chuyên cần nếu đi làm đủ 27 ngày
+    IF tongNgayCong >= 27 THEN
+        SET sotienthuong = sotienthuong + 500000;
+    END IF;
+
     SET luongDuocNhan = ROUND(luongchamcong - sotienphat + sotienthuong, -3);
 
     UPDATE `qlnv_luong`
-    SET `LuongChamCong`= luongchamcong, `SoTienThuong` = sotienthuong, `SoTienPhat` = sotienphat, `TongSoTien` = luongDuocNhan
+    SET `LuongChamCong`= luongchamcong, 
+        `SoTienThuong` = CASE WHEN ManualEdit = 0 THEN sotienthuong ELSE SoTienThuong END,
+        `SoTienPhat` = CASE WHEN ManualEdit = 0 THEN sotienphat ELSE SoTienPhat END,
+        `TongSoTien` = ROUND(luongchamcong - SoTienPhat + SoTienThuong, -3)
     WHERE MaNV = NEW.MaNhanVien AND Nam = NEW.Nam AND Thang = New.Thang;
 END
 $$
@@ -413,7 +426,8 @@ CREATE TABLE `qlnv_luong` (
   `LuongChamCong` double NOT NULL,
   `SoTienThuong` double NOT NULL DEFAULT 0,
   `SoTienPhat` double NOT NULL DEFAULT 0,
-  `TongSoTien` double NOT NULL
+  `TongSoTien` double NOT NULL,
+  `ManualEdit` tinyint(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 --

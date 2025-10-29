@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Thêm thưởng | {{congty[1]}}</title>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='doc/css/main.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/boxicons@latest/css/boxicons.min.css">
+    <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert/2.1.2/sweetalert.min.js"></script>
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.2/css/all.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-confirm/3.3.2/jquery-confirm.min.css">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename=congty[3])}}"/>
+</head>
+<body class="app sidebar-mini rtl">
+    {% include 'general/menu.html' %}
+    <main class="app-content">
+        <div class="app-title">
+            <div>
+                <h1><i class="fa fa-plus"></i> Thêm thưởng cho nhân viên</h1>
+                <p>Nhân viên: {{tenNV}} ({{maNV}}) - Tháng {{thang}}/{{nam}}</p>
+            </div>
+            <ul class="app-breadcrumb breadcrumb">
+                <li class="breadcrumb-item"><i class="fa fa-home fa-lg"></i></li>
+                <li class="breadcrumb-item"><a href="/table_data_money">Bảng kê lương</a></li>
+                <li class="breadcrumb-item">Thêm thưởng</li>
+            </ul>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="tile">
+                    <div class="tile-body">
+                        <form method="post" action="">
+                            <div class="form-group">
+                                <label for="LyDo">Lý do thưởng</label>
+                                <input type="text" class="form-control" id="LyDo" name="LyDo" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="Tien">Số tiền thưởng</label>
+                                <input type="number" class="form-control" id="Tien" name="Tien" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="Ngay">Ngày thưởng</label>
+                                <input type="date" class="form-control" id="Ngay" name="Ngay" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="GhiChu">Ghi chú</label>
+                                <textarea class="form-control" id="GhiChu" name="GhiChu"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Thêm thưởng</button>
+                            <a href="/table_data_money" class="btn btn-secondary">Hủy</a>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script src="{{ url_for('static', filename='doc/js/jquery-3.2.1.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='doc/js/popper.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='doc/js/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='doc/js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='doc/js/plugins/pace.min.js') }}"></script>
+</body>
+</html>

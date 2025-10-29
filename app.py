@@ -1471,7 +1471,23 @@ def approve_attendance(id):
     if session['role_id'] != 1:
         abort(403)
     cur = get_mysql_connection().connection.cursor()
-    cur.execute("UPDATE qlnv_chamcong SET status = 'approved' WHERE id = %s", (id,))
+    # Get the attendance details before approving
+    cur.execute("SELECT MaNhanVien, Ngay, Thang, Nam, SoGioLam FROM qlnv_chamcong WHERE id = %s", (id,))
+    attendance = cur.fetchone()
+    if attendance:
+        MaNhanVien, Ngay, Thang, Nam, SoGioLam = attendance
+        # Update status to approved
+        cur.execute("UPDATE qlnv_chamcong SET status = 'approved' WHERE id = %s", (id,))
+        # Update qlnv_chamcongthang
+        month_col = f"T{Thang}"
+        cur.execute(f"SELECT {month_col} FROM qlnv_chamcongthang WHERE MaNV = %s AND Nam = %s", (MaNhanVien, Nam))
+        current = cur.fetchone()
+        if current and current[0] is not None:
+            new_value = current[0] + SoGioLam
+            cur.execute(f"UPDATE qlnv_chamcongthang SET {month_col} = %s WHERE MaNV = %s AND Nam = %s", (new_value, MaNhanVien, Nam))
+        else:
+            # Insert or update
+            cur.execute(f"INSERT INTO qlnv_chamcongthang (MaNV, Nam, {month_col}) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE {month_col} = {month_col} + %s", (MaNhanVien, Nam, SoGioLam, SoGioLam))
     mysql.connection.commit()
     cur.close()
     return redirect(url_for('pending_attendances'))
@@ -1482,7 +1498,17 @@ def reject_attendance(id):
     if session['role_id'] != 1:
         abort(403)
     cur = get_mysql_connection().connection.cursor()
-    cur.execute("UPDATE qlnv_chamcong SET status = 'rejected' WHERE id = %s", (id,))
+    # Check current status
+    cur.execute("SELECT status, MaNhanVien, Thang, Nam, SoGioLam FROM qlnv_chamcong WHERE id = %s", (id,))
+    attendance = cur.fetchone()
+    if attendance:
+        status, MaNhanVien, Thang, Nam, SoGioLam = attendance
+        if status == 'approved':
+            # Subtract from qlnv_chamcongthang
+            month_col = f"T{Thang}"
+            cur.execute(f"UPDATE qlnv_chamcongthang SET {month_col} = {month_col} - %s WHERE MaNV = %s AND Nam = %s", (SoGioLam, MaNhanVien, Nam))
+        # Update status to rejected
+        cur.execute("UPDATE qlnv_chamcong SET status = 'rejected' WHERE id = %s", (id,))
     mysql.connection.commit()
     cur.close()
     return redirect(url_for('pending_attendances'))
@@ -2518,114 +2544,115 @@ def form_add_data_cham_cong():
         cur.execute(sql_chamcong, (MANV, NGAY.date(), GIOVAO, GIORA, OT, status))
         mysql.connection.commit()
         
-        tg_ThapPhan = 1
-        
-        #check ton tai
-        cur.execute("""SELECT MaChamCong, SoNgayThang, Ngay""" + str(NGAY.day) + """
-                    FROM qlnv_chamcongngay
-                    WHERE Nam = %s AND Thang = %s AND MaNV = %s""", (NGAY.year, NGAY.month,MANV) )
-        chamCongTheoThang = cur.fetchall()
-        
-        # check ton tai nam
-        cur.execute("""SELECT id, MaNV, T""" + str(NGAY.month) + """
-                    FROM qlnv_chamcongthang
-                    WHERE Nam = %s AND MaNV = %s""", (NGAY.year, MANV) )
-        chamCongTheoNam = cur.fetchall()
-        
-        # Xử lý trong bảng chấm công ngày và trong bảng tổng hợp theo các năm
-        if (len(chamCongTheoThang) == 0 or len(chamCongTheoNam) == 0):
-            if len(chamCongTheoThang) == 0:
-                cur.execute("""INSERT INTO `qlnv_chamcongngay` (`MaChamCong`, `MaNV`, `Nam`, `Thang`, `SoNgayThang`) VALUES
-                        (NULL, %s, %s, %s, %s)""", (MANV, NGAY.year, NGAY.month, monthrange(NGAY.year, NGAY.month)[1]))
-                 
-            if len(chamCongTheoNam) == 0:
-                cur.execute("""INSERT INTO qlnv_chamcongthang (id, MaNV, Nam) VALUES
-                        (NULL, %s, %s)""", (MANV, NGAY.year))
-            mysql.connection.commit()
+        if status == 'approved':
+            tg_ThapPhan = 1
             
-            sql_chamcongngay = "UPDATE qlnv_chamcongngay SET "
-            sql_chamcongngay += "Ngay" + str(NGAY.day) + " = '" + str(tg_ThapPhan) + "' "
-            sql_chamcongngay += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "' AND Thang = '" + str(NGAY.month) + "'"
-            cur.execute(sql_chamcongngay)
-            mysql.connection.commit()
+            #check ton tai
+            cur.execute("""SELECT MaChamCong, SoNgayThang, Ngay""" + str(NGAY.day) + """
+                        FROM qlnv_chamcongngay
+                        WHERE Nam = %s AND Thang = %s AND MaNV = %s""", (NGAY.year, NGAY.month,MANV) )
+            chamCongTheoThang = cur.fetchall()
             
-            sql_chamcongthang = "UPDATE qlnv_chamcongthang SET "
-            sql_chamcongthang += "T" + str(NGAY.month) + " = '" + str(tg_ThapPhan) + "' "
-            sql_chamcongthang += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "'"
-            cur.execute(sql_chamcongthang)
-            mysql.connection.commit()
-        else:
-            chamCongTheoThang = chamCongTheoThang[0]
-            sql_chamcongngay = "UPDATE qlnv_chamcongngay SET "
-            if chamCongTheoThang[2] == -1:
-                sql_chamcongngay += "Ngay" + str(NGAY.day) + " = '" + str(tg_ThapPhan) + "' " 
+            # check ton tai nam
+            cur.execute("""SELECT id, MaNV, T""" + str(NGAY.month) + """
+                        FROM qlnv_chamcongthang
+                        WHERE Nam = %s AND MaNV = %s""", (NGAY.year, MANV) )
+            chamCongTheoNam = cur.fetchall()
+            
+            # Xử lý trong bảng chấm công ngày và trong bảng tổng hợp theo các năm
+            if (len(chamCongTheoThang) == 0 or len(chamCongTheoNam) == 0):
+                if len(chamCongTheoThang) == 0:
+                    cur.execute("""INSERT INTO `qlnv_chamcongngay` (`MaChamCong`, `MaNV`, `Nam`, `Thang`, `SoNgayThang`) VALUES
+                            (NULL, %s, %s, %s, %s)""", (MANV, NGAY.year, NGAY.month, monthrange(NGAY.year, NGAY.month)[1]))
+                     
+                if len(chamCongTheoNam) == 0:
+                    cur.execute("""INSERT INTO qlnv_chamcongthang (id, MaNV, Nam) VALUES
+                            (NULL, %s, %s)""", (MANV, NGAY.year))
+                mysql.connection.commit()
+                
+                sql_chamcongngay = "UPDATE qlnv_chamcongngay SET "
+                sql_chamcongngay += "Ngay" + str(NGAY.day) + " = '" + str(tg_ThapPhan) + "' "
+                sql_chamcongngay += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "' AND Thang = '" + str(NGAY.month) + "'"
+                cur.execute(sql_chamcongngay)
+                mysql.connection.commit()
+                
+                sql_chamcongthang = "UPDATE qlnv_chamcongthang SET "
+                sql_chamcongthang += "T" + str(NGAY.month) + " = '" + str(tg_ThapPhan) + "' "
+                sql_chamcongthang += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "'"
+                cur.execute(sql_chamcongthang)
+                mysql.connection.commit()
             else:
-                sql_chamcongngay += "Ngay" + str(NGAY.day) + " = Ngay" + str(NGAY.day) + "+ '" + str(tg_ThapPhan) + "'" 
-            sql_chamcongngay += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "' AND Thang = '" + str(NGAY.month) + "'"
-            cur.execute(sql_chamcongngay)
-            mysql.connection.commit()
-                    
-            chamCongTheoNam = chamCongTheoNam[0]
-            sql_chamcongthang = "UPDATE qlnv_chamcongthang SET "
-            if chamCongTheoNam[2] == -1:
-                sql_chamcongthang += "T" + str(NGAY.month) + " = '" + str(tg_ThapPhan) + "' " 
-            else:
-                sql_chamcongthang += "T" + str(NGAY.month) + " = T" + str(NGAY.month) + "+ '" + str(tg_ThapPhan) + "'" 
-            sql_chamcongthang += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "'"
-            cur.execute(sql_chamcongthang)
-            mysql.connection.commit()
+                chamCongTheoThang = chamCongTheoThang[0]
+                sql_chamcongngay = "UPDATE qlnv_chamcongngay SET "
+                if chamCongTheoThang[2] == -1:
+                    sql_chamcongngay += "Ngay" + str(NGAY.day) + " = '" + str(tg_ThapPhan) + "' " 
+                else:
+                    sql_chamcongngay += "Ngay" + str(NGAY.day) + " = Ngay" + str(NGAY.day) + "+ '" + str(tg_ThapPhan) + "'" 
+                sql_chamcongngay += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "' AND Thang = '" + str(NGAY.month) + "'"
+                cur.execute(sql_chamcongngay)
+                mysql.connection.commit()
+                        
+                chamCongTheoNam = chamCongTheoNam[0]
+                sql_chamcongthang = "UPDATE qlnv_chamcongthang SET "
+                if chamCongTheoNam[2] == -1:
+                    sql_chamcongthang += "T" + str(NGAY.month) + " = '" + str(tg_ThapPhan) + "' " 
+                else:
+                    sql_chamcongthang += "T" + str(NGAY.month) + " = T" + str(NGAY.month) + "+ '" + str(tg_ThapPhan) + "'" 
+                sql_chamcongthang += " WHERE MaNV = '" + MANV  + "' AND Nam = '" + str(NGAY.year) + "'"
+                cur.execute(sql_chamcongthang)
+                mysql.connection.commit()
+                
+            # Xử lý trong bảng tổng kết tháng    
+            cur.execute("""SELECT *
+                        FROM qlnv_chamcongtongketthang
+                        WHERE Nam = %s AND Thang = %s AND MaNhanVien = %s""", (NGAY.year, NGAY.month,MANV) )
+            chamCongTongKet = cur.fetchall()
             
-        # Xử lý trong bảng tổng kết tháng    
-        cur.execute("""SELECT *
-                    FROM qlnv_chamcongtongketthang
-                    WHERE Nam = %s AND Thang = %s AND MaNhanVien = %s""", (NGAY.year, NGAY.month,MANV) )
-        chamCongTongKet = cur.fetchall()
-        
-        day_to_count = calendar.SUNDAY
+            day_to_count = calendar.SUNDAY
 
-        matrix = calendar.monthcalendar(NGAY.year,NGAY.month)
+            matrix = calendar.monthcalendar(NGAY.year,NGAY.month)
 
-        num_sun_days = sum(1 for x in matrix if x[day_to_count] != 0)
-        
-        if (len(chamCongTongKet) == 0):
-            soNgayDiLam = 1
-            soNgayDiVang = monthrange(NGAY.year, NGAY.month)[1] - 1 - num_sun_days
-            soNgayTangCa = 0
-            if OT == 1:
-                soNgayTangCa = 1
-            tongSoNgay = 1
-            cur.execute("""INSERT INTO `qlnv_chamcongtongketthang` (`Id`, `MaNhanVien`, `Nam`, `Thang`,
-                        `SoNgayDiLam`, `SoNgayDiVang`, `SoNgayTangCa`, `TongSoNgay`)
-                        VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)""", (MANV, NGAY.year, NGAY.month, soNgayDiLam,
-                                                                       soNgayDiVang, soNgayTangCa, tongSoNgay))
-            mysql.connection.commit()
-        else:
-            cur.execute("""
-                        SELECT COUNT(DISTINCT Ngay)
-                        FROM qlnv_chamcong
-                        WHERE MaNV = %s AND Month(Ngay)=%s AND YEAR(Ngay)=%s
-                        GROUP BY Month(Ngay)
-                        """, (MANV, NGAY.month, NGAY.year))
-            soNgayDiLam = cur.fetchall()[0][0]
-            soNgayDiVang = monthrange(NGAY.year, NGAY.month)[1] - soNgayDiLam - num_sun_days
-            cur.execute("""
-                        SELECT COUNT(DISTINCT Ngay)
-                        FROM qlnv_chamcong
-                       WHERE MaNV = %s AND Month(Ngay)=%s AND YEAR(Ngay)=%s AND OT = 1
-                        GROUP BY Month(Ngay)
-                        """, (MANV, NGAY.month, NGAY.year))
-            soNgayTangCa = cur.fetchall()
-            if (len(soNgayTangCa) == 0):
+            num_sun_days = sum(1 for x in matrix if x[day_to_count] != 0)
+            
+            if (len(chamCongTongKet) == 0):
+                soNgayDiLam = 1
+                soNgayDiVang = monthrange(NGAY.year, NGAY.month)[1] - 1 - num_sun_days
                 soNgayTangCa = 0
+                if OT == 1:
+                    soNgayTangCa = 1
+                tongSoNgay = 1
+                cur.execute("""INSERT INTO `qlnv_chamcongtongketthang` (`Id`, `MaNhanVien`, `Nam`, `Thang`,
+                            `SoNgayDiLam`, `SoNgayDiVang`, `SoNgayTangCa`, `TongSoNgay`)
+                            VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)""", (MANV, NGAY.year, NGAY.month, soNgayDiLam,
+                                                                           soNgayDiVang, soNgayTangCa, tongSoNgay))
+                mysql.connection.commit()
             else:
-                soNgayTangCa = soNgayTangCa[0][0]
-            tongSoNgay = soNgayDiLam
-            cur.execute("""UPDATE qlnv_chamcongtongketthang
-                        SET SoNgayDiLam = %s, SoNgayDiVang = %s, SoNgayTangCa=%s, TongSoNgay = %s
-                        WHERE MaNhanVien = %s AND Nam = %s AND Thang = %s""", (soNgayDiLam, soNgayDiVang, soNgayTangCa,
-                                                                               tongSoNgay, MANV, NGAY.year, NGAY.month))
+                cur.execute("""
+                            SELECT COUNT(DISTINCT Ngay)
+                            FROM qlnv_chamcong
+                            WHERE MaNV = %s AND Month(Ngay)=%s AND YEAR(Ngay)=%s
+                            GROUP BY Month(Ngay)
+                            """, (MANV, NGAY.month, NGAY.year))
+                soNgayDiLam = cur.fetchall()[0][0]
+                soNgayDiVang = monthrange(NGAY.year, NGAY.month)[1] - soNgayDiLam - num_sun_days
+                cur.execute("""
+                            SELECT COUNT(DISTINCT Ngay)
+                            FROM qlnv_chamcong
+                           WHERE MaNV = %s AND Month(Ngay)=%s AND YEAR(Ngay)=%s AND OT = 1
+                            GROUP BY Month(Ngay)
+                            """, (MANV, NGAY.month, NGAY.year))
+                soNgayTangCa = cur.fetchall()
+                if (len(soNgayTangCa) == 0):
+                    soNgayTangCa = 0
+                else:
+                    soNgayTangCa = soNgayTangCa[0][0]
+                tongSoNgay = soNgayDiLam
+                cur.execute("""UPDATE qlnv_chamcongtongketthang
+                            SET SoNgayDiLam = %s, SoNgayDiVang = %s, SoNgayTangCa=%s, TongSoNgay = %s
+                            WHERE MaNhanVien = %s AND Nam = %s AND Thang = %s""", (soNgayDiLam, soNgayDiVang, soNgayTangCa,
+                                                                                   tongSoNgay, MANV, NGAY.year, NGAY.month))
+                mysql.connection.commit()
             mysql.connection.commit()
-        mysql.connection.commit()
         cur.close()
         return redirect(url_for('danh_sach_cham_cong'))
     
@@ -3508,7 +3535,71 @@ def table_data_money():
     return render_template(session['role'] +'luong/table_data_money.html',
                            luong = luong,
                            congty = session['congty'],
-                           my_user = session['username'])
+                           my_user = session['username'],
+                           role_id = session['role_id'])
+
+@login_required
+@app.route('/form_add_thuong/<string:maNV>/<int:thang>/<int:nam>', methods=['GET','POST'])
+def form_add_thuong(maNV, thang, nam):
+    if session['role_id'] != 1:
+        abort(403)
+    if request.method == 'POST':
+        detail = request.form
+        LyDo = detail['LyDo']
+        Tien = float(detail['Tien'])
+        Ngay = detail['Ngay']
+        GhiChu = detail['GhiChu']
+        cur = get_mysql_connection().connection.cursor()
+        cur.execute("""
+            INSERT INTO qlnv_thuongphat (MaNV, Loai, LyDo, Tien, Ngay, GhiChu)
+            VALUES (%s, 0, %s, %s, %s, %s)
+        """, (maNV, LyDo, Tien, Ngay, GhiChu))
+        mysql.connection.commit()
+        cur.close()
+        return redirect(url_for('table_data_money'))
+    # Get employee name
+    cur = get_mysql_connection().connection.cursor()
+    cur.execute("SELECT TenNV FROM qlnv_nhanvien WHERE MaNhanVien = %s", (maNV,))
+    emp = cur.fetchone()
+    cur.close()
+    if not emp:
+        abort(404)
+    return render_template('luong/form_add_thuong.html', maNV=maNV, thang=thang, nam=nam, tenNV=emp[0], congty=session['congty'], my_user=session['username'])
+
+@login_required
+@app.route('/edit_luong/<int:id>', methods=['GET','POST'])
+def edit_luong(id):
+    if session['role_id'] != 1:
+        abort(403)
+    cur = get_mysql_connection().connection.cursor()
+    if request.method == 'POST':
+        detail = request.form
+        SoTienThuong = float(detail['SoTienThuong'])
+        SoTienPhat = float(detail['SoTienPhat'])
+        # Recalculate TongSoTien
+        cur.execute("SELECT LuongChamCong FROM qlnv_luong WHERE id = %s", (id,))
+        luong_cham_cong = cur.fetchone()[0]
+        TongSoTien = luong_cham_cong - SoTienPhat + SoTienThuong
+        cur.execute("""
+            UPDATE qlnv_luong 
+            SET SoTienThuong = %s, SoTienPhat = %s, TongSoTien = %s, ManualEdit = 1 
+            WHERE id = %s
+        """, (SoTienThuong, SoTienPhat, TongSoTien, id))
+        mysql.connection.commit()
+        cur.close()
+        return redirect(url_for('table_data_money'))
+    # GET: fetch current data
+    cur.execute("""
+        SELECT l.*, nv.TenNV 
+        FROM qlnv_luong l 
+        JOIN qlnv_nhanvien nv ON l.MaNV = nv.MaNhanVien 
+        WHERE l.id = %s
+    """, (id,))
+    data = cur.fetchone()
+    cur.close()
+    if not data:
+        abort(404)
+    return render_template('luong/edit_luong.html', data=data, congty=session['congty'], my_user=session['username'])
 
 @login_required
 @app.route('/get_print_data_money')
