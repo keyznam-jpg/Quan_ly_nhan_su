@@ -214,6 +214,15 @@
                 </div>
               {% endif %}
               
+              {% if gioi_tinh_err %}
+                <div class="form-group col-md-12">
+                    <div class="alert alert-danger" style="text-align: left; font-size: 12px; background-color: red;">
+                    <span class="closebtn" onclick="this.parentElement.style.display='none';">&times;</span>
+                    <strong>Giá trị giới tính không hợp lệ!</strong> 
+                    </div>
+                </div>
+              {% endif %}
+              
               <div class="form-group col-md-4">
                 <label class="control-label">Mã nhân viên</label>
                 <input class="form-control" type="text" name="MNV" required>
@@ -227,9 +236,9 @@
               <div class="form-group col-md-4">
                 <label class="control-label">Giới tính</label>
                 <select class="form-control" id="exampleSelect2" name="GIOITINH" required>
-                  <option>-- Chọn giới tính --</option>
-                  <option>Nam</option>
-                  <option>Nữ</option>
+                  <option value="" disabled selected>-- Chọn giới tính --</option>
+                  <option value="Nam">Nam</option>
+                  <option value="Nữ">Nữ</option>
                 </select>
               </div>
 

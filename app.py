@@ -72,9 +72,6 @@ def login_required(func): # need for some router
     
 @app.route("/logout")
 def logout():
-    if 'chamcong' in session.keys():
-        form_add_data_cham_cong()
-    
     session.clear()
     return redirect(url_for("login"))
 
@@ -281,6 +278,15 @@ def form_add_data_employees():
         if len(kiem_tra_ma_nhan_vien) != 0:
             return render_template(session['role'] +'employees/form_add_data_employees.html',
                         ma_err="True",
+                        trinhdohocvan = trinhdohocvan, 
+                        chucvu = chucvu,
+                        phongban = phongban,
+                        congty = session['congty'],
+                        my_user = session['username'])
+        
+        if GIOITINH not in ['Nam', 'Nữ']:
+            return render_template(session['role'] +'employees/form_add_data_employees.html',
+                        gioi_tinh_err="True",
                         trinhdohocvan = trinhdohocvan, 
                         chucvu = chucvu,
                         phongban = phongban,
@@ -767,7 +773,7 @@ def form_add_trinhdohocvan():
         ChuyenNganh = details['ChuyenNganh'].strip()
         for data in trinhdohocvan:
             if (MATDHV in data):
-                return render_template(session['role'] +"form_add_trinhdohocvan.html", 
+                return render_template(session['role'] +"trinhdohocvan/form_add_trinhdohocvan.html", 
                                        ma_err = "True", 
                                        congty = session['congty'],
                                        my_user = session['username'])
@@ -1135,7 +1141,7 @@ def form_add_chuc_vu():
         
         for data in chucvu:
             if (MaCV in data):
-                return render_template(session['role'] +"form_add_chuc_vu.html", 
+                return render_template(session['role'] +"chucvu/form_add_chuc_vu.html", 
                                        congty = session['congty'],
                                        ma_err = "True",
                                        my_user = session['username'])
@@ -1449,6 +1455,39 @@ def danh_sach_cham_cong():
                            my_user = session['username'])
 
 @login_required
+@app.route('/pending_attendances')
+def pending_attendances():
+    if session['role_id'] != 1:
+        abort(403)
+    cur = get_mysql_connection().connection.cursor()
+    cur.execute("""SELECT cc.*, nv.TenNV FROM qlnv_chamcong cc JOIN qlnv_nhanvien nv ON cc.MaNV = nv.MaNhanVien WHERE cc.status = 'pending' ORDER BY cc.Ngay DESC""")
+    pending = cur.fetchall()
+    cur.close()
+    return render_template('chamcong/pending_attendances.html', pending=pending, congty=session['congty'], my_user=session['username'])
+
+@login_required
+@app.route('/approve_attendance/<int:id>', methods=['POST'])
+def approve_attendance(id):
+    if session['role_id'] != 1:
+        abort(403)
+    cur = get_mysql_connection().connection.cursor()
+    cur.execute("UPDATE qlnv_chamcong SET status = 'approved' WHERE id = %s", (id,))
+    mysql.connection.commit()
+    cur.close()
+    return redirect(url_for('pending_attendances'))
+
+@login_required
+@app.route('/reject_attendance/<int:id>', methods=['POST'])
+def reject_attendance(id):
+    if session['role_id'] != 1:
+        abort(403)
+    cur = get_mysql_connection().connection.cursor()
+    cur.execute("UPDATE qlnv_chamcong SET status = 'rejected' WHERE id = %s", (id,))
+    mysql.connection.commit()
+    cur.close()
+    return redirect(url_for('pending_attendances'))
+
+@login_required
 @app.route('/get_print_danh_sach_cham_cong/<string:year>')
 def get_print_danh_sach_cham_cong(year):
     cur = get_mysql_connection().connection.cursor()
@@ -1635,7 +1674,7 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
     sql = """
         SELECT * 
         FROM qlnv_chamcong cc 
-        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s
+        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s AND status = 'approved'
         ORDER BY cc.Ngay ASC, cc.GioVao ASC;
     """
     
@@ -1644,7 +1683,7 @@ def table_cham_cong_ngay_trong_thang(maNV,year,month):
         sql = """
             SELECT * 
             FROM qlnv_chamcong cc 
-            WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s
+            WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s AND status = 'approved'
             ORDER BY cc.Ngay ASC, cc.GioVao ASC;
         """
         val = (year, month, session['username'][4])
@@ -1795,7 +1834,7 @@ def get_plot_cham_cong_tong_ket_thang(maNV,year,month):
     sql = """
         SELECT * 
         FROM qlnv_chamcong cc 
-        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s
+        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s AND status = 'approved'
         ORDER BY cc.Ngay ASC, cc.GioVao ASC;
     """
     val = (year, month, maNV)
@@ -1857,7 +1896,7 @@ def get_print_cham_cong_ngay_trong_thang(maNV,year,month):
     sql = """
         SELECT * 
         FROM qlnv_chamcong cc 
-        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s
+        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s AND status = 'approved'
         ORDER BY cc.Ngay ASC, cc.GioVao ASC;
     """
     val = (year, month, maNV)
@@ -1968,7 +2007,7 @@ def get_cham_cong_ngay_trong_thang_excel(maNV,year,month):
     sql = """
         SELECT * 
         FROM qlnv_chamcong cc 
-        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s
+        WHERE YEAR(cc.Ngay) = %s AND MONTH(cc.Ngay) = %s AND MaNV = %s AND status = 'approved'
         ORDER BY cc.Ngay ASC, cc.GioVao ASC;
     """
     val = (year, month, maNV)
@@ -2097,23 +2136,10 @@ def form_view_update_cham_cong(canEdit, maNV, id, day, month, year):
         NGAY = datetime.datetime(int(year), int(month), int(day))
         GIOVAO = detail['GioVao']
         GIORA = detail['GioRa']
-        OT = detail['OT']
+        OT = int(detail['OT'])
         
         if (GIORA < GIOVAO):
             abort(404)
-        
-        sql = """
-            SELECT ThoiGian_thap_phan
-            FROM qlnv_chamcong
-            WHERE id = %s
-            """
-        cur.execute(sql, (id, ))
-        tg_ThapPhan_old = cur.fetchall()
-        
-        if (len(tg_ThapPhan_old) == 0):
-            abort(404)
-        
-        tg_ThapPhan_old = tg_ThapPhan_old[0][0]
         
         sql_chamcong = """
             UPDATE `qlnv_chamcong` 
@@ -2123,17 +2149,9 @@ def form_view_update_cham_cong(canEdit, maNV, id, day, month, year):
         cur.execute(sql_chamcong, (GIOVAO, GIORA, OT, id))
         mysql.connection.commit()
         
-        cur.execute("""
-                    SELECT ThoiGian_thap_phan
-                    FROM qlnv_chamcong
-                    WHERE MaNV = %s AND Ngay=%s AND GioVao=%s AND GioRa=%s AND OT =%s
-                    """, (maNV, NGAY.date(), GIOVAO, GIORA, OT))
-        tg_ThapPhan_new = cur.fetchall()[0][0]
-        
-        if (OT == 1):
-            tg_ThapPhan_new *= 2 # tang ca huong luong x2
-            
-        diff = tg_ThapPhan_new - tg_ThapPhan_old
+        tg_ThapPhan_old = 1
+        tg_ThapPhan_new = 1
+        diff = 0
         
         #check ton tai
         cur.execute("""SELECT MaChamCong, SoNgayThang, Ngay""" + str(NGAY.day) + """
@@ -2459,53 +2477,48 @@ def delete_cham_cong(id):
 @login_required
 @app.route('/form_add_data_cham_cong', methods=['GET','POST'])
 def form_add_data_cham_cong():
+    is_admin = session['role_id'] == 1
     if request.method == 'POST':
         cur = get_mysql_connection().connection.cursor()
-        if (session['role_id'] == 1):
+        if is_admin:
             detail = request.form
             NGAY = datetime.datetime.strptime(detail['Ngay'].strip(), '%Y-%m-%d')
             MANV = detail['MANV']
             GIOVAO = detail['GioVao']
             GIORA = detail['GioRa']
-            OT = detail['OT']
+            OT = int(detail['OT'])
         else:
-            if 'chamcong' not in session.keys():
-                NGAY = datetime.datetime.now().strftime('%Y-%m-%d')
-                MANV = session['username'][4]
-                GIOVAO = datetime.datetime.now().strftime("%H:%M:%S")
-                # GIORA = detail['GioRa']
-                OT = 0
-                data_in_session = (NGAY, MANV, GIOVAO, OT)
-                session['chamcong'] = data_in_session
+            MANV = session['username'][4]
+            today = datetime.date.today()
+            cur.execute("""
+                SELECT GioVao
+                FROM qlnv_chamcong
+                WHERE MaNV = %s AND Ngay = %s
+                ORDER BY GioVao ASC
+                LIMIT 1
+            """, (MANV, today))
+            existing = cur.fetchone()
+            if existing:
+                cur.close()
                 return render_template(session['role'] +"chamcong/form_add_cham_cong.html",
-                            chamcong = data_in_session,
-                               is_chamcong = 'YES',
-                           congty = session['congty'],
-                           my_user = session['username'])
-            else:
-                NGAY = datetime.datetime.strptime(session['chamcong'][0], '%Y-%m-%d')
-                MANV = session['username'][4]
-                GIOVAO = session['chamcong'][2]
-                GIORA = datetime.datetime.now().strftime("%H:%M:%S")
-                OT = 0
-                session.pop('chamcong')
+                                       congty = session['congty'],
+                                       my_user = session['username'],
+                                       already_checked = True,
+                                       check_time = existing[0],
+                                       message = "Ban da cham cong hom nay.")
+            NGAY = datetime.datetime.combine(today, datetime.datetime.min.time())
+            GIOVAO = datetime.datetime.now().strftime("%H:%M:%S")
+            GIORA = GIOVAO
+            OT = 0
+        status = 'approved' if is_admin else 'pending'
         sql_chamcong = """
-            INSERT INTO `qlnv_chamcong` (`id`, `MaNV`, `Ngay`, `GioVao`, `GioRa`, `OT`, `ThoiGianLamViec`, `ThoiGian_thap_phan`) 
-            VALUES (NULL, %s, %s, %s, %s, %s, '', '0');
+            INSERT INTO `qlnv_chamcong` (`id`, `MaNV`, `Ngay`, `GioVao`, `GioRa`, `OT`, `status`) 
+            VALUES (NULL, %s, %s, %s, %s, %s, %s);
         """
-        cur.execute(sql_chamcong, (MANV, NGAY.date(), GIOVAO, GIORA, OT))
+        cur.execute(sql_chamcong, (MANV, NGAY.date(), GIOVAO, GIORA, OT, status))
         mysql.connection.commit()
         
-        
-        cur.execute("""
-                    SELECT ThoiGian_thap_phan
-                    FROM qlnv_chamcong
-                    WHERE MaNV = %s AND Ngay=%s AND GioVao=%s AND GioRa=%s AND OT =%s
-                    """, (MANV, NGAY.date(), GIOVAO, GIORA, OT))
-        tg_ThapPhan = cur.fetchall()[0][0]
-        
-        if (OT == 1):
-            tg_ThapPhan *= 2 # tang ca huong luong x2
+        tg_ThapPhan = 1
         
         #check ton tai
         cur.execute("""SELECT MaChamCong, SoNgayThang, Ngay""" + str(NGAY.day) + """
@@ -2598,7 +2611,7 @@ def form_add_data_cham_cong():
             cur.execute("""
                         SELECT COUNT(DISTINCT Ngay)
                         FROM qlnv_chamcong
-                        WHERE MaNV = %s AND Month(Ngay)=%s AND YEAR(Ngay)=%s AND OT = 1
+                       WHERE MaNV = %s AND Month(Ngay)=%s AND YEAR(Ngay)=%s AND OT = 1
                         GROUP BY Month(Ngay)
                         """, (MANV, NGAY.month, NGAY.year))
             soNgayTangCa = cur.fetchall()
@@ -2616,16 +2629,31 @@ def form_add_data_cham_cong():
         cur.close()
         return redirect(url_for('danh_sach_cham_cong'))
     
-    if 'chamcong' in session:
+    if is_admin:
         return render_template(session['role'] +"chamcong/form_add_cham_cong.html",
-                               chamcong = session['chamcong'],
-                               is_chamcong = 'YES',
-                           congty = session['congty'],
-                           my_user = session['username'])
+                               congty = session['congty'],
+                               my_user = session['username'])
+    
+    cur = get_mysql_connection().connection.cursor()
+    today = datetime.date.today()
+    cur.execute("""
+                SELECT GioVao
+                FROM qlnv_chamcong
+                WHERE MaNV = %s AND Ngay = %s
+                ORDER BY GioVao ASC
+                LIMIT 1
+                """, (session['username'][4], today))
+    existing = cur.fetchone()
+    cur.close()
+    already_checked = existing is not None
+    check_time = existing[0] if already_checked else None
     
     return render_template(session['role'] +"chamcong/form_add_cham_cong.html",
                            congty = session['congty'],
-                           my_user = session['username'])
+                           my_user = session['username'],
+                           already_checked = already_checked,
+                           check_time = check_time,
+                           message = None)
 
 
 #

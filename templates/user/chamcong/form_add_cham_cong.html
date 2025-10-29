@@ -88,46 +88,38 @@
                 <button class="" role="button">Button 29</button> 
                 <button class="" role="button">Button 24</button>
             !-->
-                {% if chamcong %}
                 <div class="form-group col-md-12">
-                <label class="control-label">Tên nhân viên: {{my_user[3]}}</label>
+                <label class="control-label">Ten nhan vien: {{my_user[3]}}</label>
                 </div>
                 
                 <div class="form-group col-md-12">
-                <label class="control-label">Mã nhân viên: {{chamcong[1]}}</label><br>
+                <label class="control-label">Ma nhan vien: {{my_user[4]}}</label><br>
                 </div>
 
                 <div class="form-group col-md-12">
-                <label class="control-label">Ngày: {{chamcong[0]}}</label><br>
-                </div>
-
-                <div class="form-group col-md-12">
-                <label class="control-label">Bắt đầu chấm công lúc: {{chamcong[2]}}</label><br>
-                </div>
+                {% if already_checked %}
+                    <label class="control-label">Ban da cham cong hom nay luc: {{check_time}}</label><br>
                 {% else %}
+                    <label class="control-label">Ban chua cham cong hom nay.</label><br>
+                {% endif %}
+                </div>
 
-                    <div class="form-group col-md-12">
-                    <label class="control-label">Tên nhân viên: {{my_user[3]}}</label>
-                    </div>
-                    
-                    <div class="form-group col-md-12">
-                    <label class="control-label">Mã nhân viên: {{my_user[4]}}</label><br>
-                    </div>
-
+                {% if message %}
+                <div class="form-group col-md-12">
+                    <span style="color:#d9534f;">{{message}}</span>
+                </div>
                 {% endif %}
 
               <div class="form-group col-md-4">
-                {% if is_chamcong %}
-                    <input style="width: 160%; height: 140%;"  class="button-24" type="submit" value="Dừng chấm công"/>
-                {% else %}
-                    <input style="width: 160%; height: 140%;" class="button-29" type="submit" value="Bắt đầu chấm công"/>
+                {% set button_class = 'button-29' %}
+                {% set button_label = 'Cham cong' %}
+                {% if already_checked %}
+                    {% set button_class = 'button-24' %}
+                    {% set button_label = 'Da cham cong' %}
                 {% endif %}
+                <input style="width: 160%; height: 140%;" class="{{button_class}}" type="submit" value="{{button_label}}" {% if already_checked %}disabled{% endif %}/>
               </div>
-             
-
-
-
-            </form>
+</form>
 
   </main>
   <!-- Essential javascripts for application to work-->
